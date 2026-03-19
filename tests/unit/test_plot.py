@@ -327,3 +327,51 @@ class TestPlotSingleMetricHovmoller:
                 time_operation=time_operation,
                 time_op_kwargs=time_op_kwargs,
             )
+
+
+class TestPlotRankHistogram:
+    """Tests for plot_rank_histogram()."""
+
+    def test_returns_axes(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_rank_histogram() should return matplotlib Axes."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from mllam_verification.plot import plot_rank_histogram
+
+        axes = plot_rank_histogram(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+        )
+        import matplotlib.pyplot as plt
+
+        assert isinstance(axes, plt.Axes)
+        plt.close("all")
+
+    def test_accepts_existing_axes(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_rank_histogram() should use provided axes."""
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        from mllam_verification.plot import plot_rank_histogram
+
+        fig, ax = plt.subplots()
+        returned_ax = plot_rank_histogram(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            axes=ax,
+        )
+        assert returned_ax is ax
+        plt.close("all")

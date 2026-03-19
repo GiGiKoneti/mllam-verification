@@ -25,8 +25,140 @@ class TestRmse:
         self, da_prediction_2d_utc: xr.DataArray, da_reference_2d_utc: xr.DataArray
     ):
         """Test computing the root mean squared error."""
-        da_rmse = rmse(
-            da_prediction_2d_utc, da_reference_2d_utc, reduce_dims=["x", "y"]
-        )
+        da_rmse = rmse(da_prediction_2d_utc, da_reference_2d_utc, reduce_dims=["x", "y"])
         assert isinstance(da_rmse, xr.DataArray)
         assert "cell_methods" in da_rmse.attrs
+
+
+class TestCrps:
+    """Tests for the crps() function."""
+
+    def test_crps_returns_dataarray(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """crps() should return a DataArray."""
+        from mllam_verification.operations.statistics import crps
+
+        result = crps(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_crps_ensemble_dim_collapsed(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Ensemble member dimension must not appear in output."""
+        from mllam_verification.operations.statistics import crps
+
+        result = crps(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert "ensemble_member" not in result.dims
+
+    def test_crps_has_cell_methods(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Output must have cell_methods attribute."""
+        from mllam_verification.operations.statistics import crps
+
+        result = crps(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert "cell_methods" in result.attrs
+
+    def test_crps_non_negative(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """CRPS must be non-negative."""
+        from mllam_verification.operations.statistics import crps
+
+        result = crps(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert float(result.min()) >= 0
+
+
+class TestSpreadSkillRatio:
+    """Tests for the spread_skill_ratio() function."""
+
+    def test_ssr_returns_dataarray(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """spread_skill_ratio() should return a DataArray."""
+        from mllam_verification.operations.statistics import spread_skill_ratio
+
+        result = spread_skill_ratio(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_ssr_positive(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """SSR must be positive."""
+        from mllam_verification.operations.statistics import spread_skill_ratio
+
+        result = spread_skill_ratio(
+            da_ensemble_prediction_2d_utc,
+            da_reference_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["x", "y"],
+        )
+        assert float(result.min()) > 0
+
+    def test_ssr_perfect_ensemble_near_one(self):
+        """A perfectly calibrated ensemble should have SSR near 1.0."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import spread_skill_ratio
+
+        rng = np.random.default_rng(seed=0)
+        # Truth
+        truth = xr.DataArray(
+            rng.normal(0, 1, (100,)),
+            dims=["time"],
+        )
+        # Ensemble: sample from same distribution as truth
+        members = [
+            xr.DataArray(
+                rng.normal(0, 1, (100,)),
+                dims=["time"],
+            ).assign_coords(ensemble_member=i)
+            for i in range(50)
+        ]
+        ensemble = xr.concat(members, dim="ensemble_member")
+        result = spread_skill_ratio(
+            ensemble,
+            truth,
+            ensemble_member_dim="ensemble_member",
+            reduce_dims=["time"],
+        )
+        # For a large well-calibrated ensemble SSR should be near 1.0
+        assert 0.5 < float(result) < 2.0

@@ -177,3 +177,21 @@ def fixture_da_prediction_2d_utc(
     data += noise + bias
 
     return da_reference_2d_utc.copy(data=data)
+
+
+@pytest.fixture(name="da_ensemble_prediction_2d_utc", scope="session")
+def fixture_da_ensemble_prediction_2d_utc(
+    da_prediction_2d_utc: xr.DataArray,
+) -> xr.DataArray:
+    """Ensemble version of the 2D UTC prediction fixture.
+
+    Creates a 10-member ensemble by adding Gaussian noise to the
+    deterministic prediction fixture using a seeded RNG for reproducibility.
+    """
+    members = []
+    rng = np.random.default_rng(seed=42)
+    for i in range(10):
+        noise = rng.normal(0, 0.2, da_prediction_2d_utc.shape)
+        member = da_prediction_2d_utc.copy(data=da_prediction_2d_utc.values + noise)
+        members.append(member.assign_coords(ensemble_member=i))
+    return xr.concat(members, dim="ensemble_member")
