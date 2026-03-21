@@ -350,6 +350,73 @@ def spread_skill_ratio(
     return ds_ssr
 
 
+def energy_score(
+    ds_prediction: xr.Dataset | xr.DataArray,
+    ds_reference: xr.Dataset | xr.DataArray,
+    ensemble_member_dim: str = "ensemble_member",
+    groupby: Optional[str] = None,
+    **stats_op_kwargs,
+) -> xr.Dataset | xr.DataArray:
+    """Compute the Energy Score for an ensemble forecast.
+
+    The Energy Score is a multivariate proper scoring rule
+    that generalises the CRPS to vector-valued forecasts.
+
+    Formula:
+        ES = E||X - y||₂ - 0.5 · E||X - X'||₂
+
+    where X and X' are independent draws from the forecast
+    ensemble and y is the observation. Lower is better.
+    A perfect deterministic ensemble has ES = 0.
+
+    Args:
+        ds_prediction: Ensemble forecast with dimension
+            ``ensemble_member_dim``.
+        ds_reference: Verifying observation, broadcastable
+            against a single ensemble member.
+        ensemble_member_dim: Name of the ensemble member
+            dimension. Defaults to ``"ensemble_member"``.
+        groupby: Optional groupby dimension name.
+        **stats_op_kwargs: Passed to underlying stats op.
+
+    Returns:
+        Energy Score with ``ensemble_member_dim`` reduced.
+
+    References:
+        Gneiting & Raftery (2007). Strictly Proper Scoring
+        Rules. JASA, 102(477).
+        https://doi.org/10.1198/016214506000001437
+
+        Rasp et al. (2024). WeatherBench 2. JAMES.
+        https://doi.org/10.1029/2023MS004019
+    """
+
+    # Term 1: E[||X - y||₂]
+    # Mean L2 distance from each member to observation
+    term1 = ((ds_prediction - ds_reference) ** 2).mean(dim=ensemble_member_dim) ** 0.5
+
+    # Term 2: 0.5 · E[||X - X'||₂]
+    # Mean pairwise L2 distance within ensemble
+    # Use rename trick for clean xarray broadcasting
+    dim_prime = ensemble_member_dim + "_prime"
+    pred_prime = ds_prediction.rename({ensemble_member_dim: dim_prime})
+    pairwise_l2 = ((ds_prediction - pred_prime) ** 2) ** 0.5
+    term2 = 0.5 * pairwise_l2.mean(dim=[ensemble_member_dim, dim_prime])
+
+    es = term1 - term2
+
+    es.name = getattr(ds_prediction, "name", "energy_score")
+    reduce_dims = list(set(ds_reference.dims) - set(es.dims))
+    new_cell_methods = [",".join(reduce_dims) + ": energy_score"]
+    if isinstance(es, xr.DataArray):
+        update_cell_methods(es, new_cell_methods)
+    elif isinstance(es, xr.Dataset):
+        for _, da_var in es.items():
+            update_cell_methods(da_var, new_cell_methods)
+
+    return es
+
+
 def mean(ds: xr.Dataset | xr.DataArray, **stats_op_kwargs) -> xr.Dataset | xr.DataArray:
     """Compute the mean across specified dimensions.
 

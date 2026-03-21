@@ -162,3 +162,93 @@ class TestSpreadSkillRatio:
         )
         # For a large well-calibrated ensemble SSR should be near 1.0
         assert 0.5 < float(result) < 2.0
+
+
+class TestEnergyScore:
+    """Tests for energy_score().
+
+    Mathematical reference:
+        ES = E||X-y||₂ - 0.5·E||X-X'||₂
+        Perfect ensemble (all members = obs): ES = 0
+        Random ensemble: ES > 0
+    """
+
+    def test_energy_score_returns_correct_type(self):
+        """energy_score returns same type as input."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import energy_score
+
+        # DataArray input → DataArray output
+        obs = xr.DataArray(
+            np.array([1.0, 2.0, 3.0]),
+            dims=["space"],
+        )
+        members = xr.DataArray(
+            np.random.randn(5, 3),
+            dims=["ensemble_member", "space"],
+        )
+        result = energy_score(members, obs)
+        assert isinstance(result, xr.DataArray)
+
+    def test_energy_score_ensemble_dim_collapsed(self):
+        """ensemble_member dim must not appear in output."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import energy_score
+
+        obs = xr.DataArray(
+            np.array([1.0, 2.0, 3.0]),
+            dims=["space"],
+        )
+        members = xr.DataArray(
+            np.random.randn(5, 3),
+            dims=["ensemble_member", "space"],
+        )
+        result = energy_score(members, obs)
+        assert "ensemble_member" not in result.dims
+
+    def test_energy_score_perfect_ensemble_is_zero(self):
+        """
+        Perfect ensemble: all M members equal observation.
+        ES = E||X-y||₂ - 0.5·E||X-X'||₂
+           = 0        - 0.5·0
+           = 0
+        """
+        import numpy as np
+        import pytest
+
+        from mllam_verification.operations.statistics import energy_score
+
+        obs = xr.DataArray(
+            np.array([1.0, 2.0, 3.0]),
+            dims=["space"],
+        )
+        # All 5 members identical to obs
+        members = xr.DataArray(
+            np.stack([obs.values] * 5, axis=0),
+            dims=["ensemble_member", "space"],
+        )
+        result = energy_score(members, obs)
+        assert float(result.mean()) == pytest.approx(0.0, abs=1e-6)
+
+    def test_energy_score_non_negative(self):
+        """
+        Energy Score is non-negative by definition.
+        ES >= 0 for any ensemble and observation.
+        """
+        import numpy as np
+
+        from mllam_verification.operations.statistics import energy_score
+
+        rng = np.random.default_rng(42)
+        obs = xr.DataArray(
+            rng.standard_normal(10),
+            dims=["space"],
+        )
+        members = xr.DataArray(
+            rng.standard_normal((8, 10)),
+            dims=["ensemble_member", "space"],
+        )
+        result = energy_score(members, obs)
+        assert float(result.min()) >= 0.0
