@@ -209,10 +209,9 @@ def mae(
 
 
 def crps(
-    ds_prediction: xr.Dataset | xr.DataArray,
     ds_reference: xr.Dataset | xr.DataArray,
+    ds_prediction: xr.Dataset | xr.DataArray,
     ensemble_member_dim: str = "ensemble_member",
-    groupby: Optional[str] = None,
     **stats_op_kwargs,
 ) -> xr.Dataset | xr.DataArray:
     """Compute the Continuous Ranked Probability Score (CRPS).
@@ -226,14 +225,12 @@ def crps(
     and accepts raw ensemble member trajectories.
 
     Args:
-        ds_prediction: Ensemble forecast dataset or data array.
-            Must contain `ensemble_member_dim` as a dimension.
         ds_reference: Reference (observation) dataset or data array.
             Must NOT contain `ensemble_member_dim`.
+        ds_prediction: Ensemble forecast dataset or data array.
+            Must contain `ensemble_member_dim` as a dimension.
         ensemble_member_dim: Name of the ensemble member dimension
             in `ds_prediction`. Defaults to ``"ensemble_member"``.
-        groupby: Optional dimension name to group results by before
-            computing the statistic.
         **stats_op_kwargs: Additional keyword arguments forwarded to
             `scores.probability.crps_for_ensemble`, such as
             ``reduce_dims`` or ``preserve_dims``.
@@ -251,17 +248,18 @@ def crps(
 
     Example:
         >>> da_crps = crps(
-        ...     da_ensemble_prediction,
         ...     da_reference,
+        ...     da_ensemble_prediction,
         ...     ensemble_member_dim="ensemble_member",
         ...     reduce_dims=["x", "y"],
         ... )
     """
+    # groupby is accepted from callers but not used by this metric
+    stats_op_kwargs.pop("groupby", None)
     stats_op_kwargs["ensemble_member_dim"] = ensemble_member_dim
     ds_crps = compute_pipeline_statistic(
         datasets=[ds_prediction, ds_reference],
         stats_op=scc_prob.crps_for_ensemble,
-        groupby=groupby,
         stats_op_kwargs=stats_op_kwargs,
     )
     ds_crps.name = getattr(ds_prediction, "name", "crps")
@@ -276,10 +274,9 @@ def crps(
 
 
 def spread_skill_ratio(
-    ds_prediction: xr.Dataset | xr.DataArray,
     ds_reference: xr.Dataset | xr.DataArray,
+    ds_prediction: xr.Dataset | xr.DataArray,
     ensemble_member_dim: str = "ensemble_member",
-    groupby: Optional[str] = None,
     **stats_op_kwargs,
 ) -> xr.Dataset | xr.DataArray:
     """Compute the Spread-Skill Ratio (SSR) for ensemble calibration.
@@ -294,12 +291,11 @@ def spread_skill_ratio(
     Skill is the RMSE of the ensemble mean against the reference.
 
     Args:
+        ds_reference: Reference (observation) dataset or data array.
         ds_prediction: Ensemble forecast dataset or data array.
             Must contain `ensemble_member_dim` as a dimension.
-        ds_reference: Reference (observation) dataset or data array.
         ensemble_member_dim: Name of the ensemble member dimension
             in `ds_prediction`. Defaults to ``"ensemble_member"``.
-        groupby: Optional dimension name to group results by.
         **stats_op_kwargs: Additional keyword arguments forwarded
             to xarray reduction operations, such as ``reduce_dims``.
 
@@ -313,7 +309,15 @@ def spread_skill_ratio(
         the RMSE of the Ensemble Mean?
         https://doi.org/10.1175/MWR-D-14-00037.1
     """
+    # groupby is accepted from callers but not used by this metric
+    stats_op_kwargs.pop("groupby", None)
+    preserve_dims = stats_op_kwargs.pop("preserve_dims", None)
     reduce_dims = stats_op_kwargs.get("reduce_dims", None)
+
+    # Derive reduce_dims from preserve_dims if not explicitly provided
+    if reduce_dims is None and preserve_dims is not None:
+        all_dims = [d for d in ds_prediction.dims if d != ensemble_member_dim]
+        reduce_dims = [d for d in all_dims if d not in preserve_dims]
 
     # Ensemble spread: mean standard deviation across members
     spread = ds_prediction.std(dim=ensemble_member_dim)

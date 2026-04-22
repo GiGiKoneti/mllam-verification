@@ -42,8 +42,8 @@ class TestCrps:
         from mllam_verification.operations.statistics import crps
 
         result = crps(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -58,8 +58,8 @@ class TestCrps:
         from mllam_verification.operations.statistics import crps
 
         result = crps(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -74,8 +74,8 @@ class TestCrps:
         from mllam_verification.operations.statistics import crps
 
         result = crps(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -90,8 +90,8 @@ class TestCrps:
         from mllam_verification.operations.statistics import crps
 
         result = crps(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -110,8 +110,8 @@ class TestSpreadSkillRatio:
         from mllam_verification.operations.statistics import spread_skill_ratio
 
         result = spread_skill_ratio(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -126,8 +126,8 @@ class TestSpreadSkillRatio:
         from mllam_verification.operations.statistics import spread_skill_ratio
 
         result = spread_skill_ratio(
-            da_ensemble_prediction_2d_utc,
             da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["x", "y"],
         )
@@ -155,8 +155,8 @@ class TestSpreadSkillRatio:
         ]
         ensemble = xr.concat(members, dim="ensemble_member")
         result = spread_skill_ratio(
-            ensemble,
             truth,
+            ensemble,
             ensemble_member_dim="ensemble_member",
             reduce_dims=["time"],
         )

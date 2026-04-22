@@ -195,3 +195,23 @@ def fixture_da_ensemble_prediction_2d_utc(
         member = da_prediction_2d_utc.copy(data=da_prediction_2d_utc.values + noise)
         members.append(member.assign_coords(ensemble_member=i))
     return xr.concat(members, dim="ensemble_member")
+
+
+@pytest.fixture(name="da_ensemble_prediction_2d_elapsed", scope="session")
+def fixture_da_ensemble_prediction_2d_elapsed(
+    da_prediction_2d_elapsed: xr.DataArray,
+) -> xr.DataArray:
+    """Ensemble version of the 2D elapsed prediction fixture.
+
+    Creates a 10-member ensemble by adding Gaussian noise to the
+    deterministic prediction fixture using a seeded RNG for reproducibility.
+    """
+    members = []
+    rng = np.random.default_rng(seed=42)
+    for i in range(10):
+        noise = rng.normal(0, 0.2, da_prediction_2d_elapsed.shape)
+        member = da_prediction_2d_elapsed.copy(
+            data=da_prediction_2d_elapsed.values + noise
+        )
+        members.append(member.assign_coords(ensemble_member=i))
+    return xr.concat(members, dim="ensemble_member")
