@@ -254,22 +254,24 @@ def crps(
         ...     reduce_dims=["x", "y"],
         ... )
     """
-    # groupby is accepted from callers but not used by this metric
-    stats_op_kwargs.pop("groupby", None)
+    groupby = stats_op_kwargs.pop("groupby", None)
     stats_op_kwargs["ensemble_member_dim"] = ensemble_member_dim
     ds_crps = compute_pipeline_statistic(
         datasets=[ds_prediction, ds_reference],
         stats_op=scc_prob.crps_for_ensemble,
         stats_op_kwargs=stats_op_kwargs,
+        groupby=groupby,
     )
-    ds_crps.name = getattr(ds_prediction, "name", "crps")
-    reduce_dims = list(set(ds_reference.dims) - set(ds_crps.dims))
-    new_cell_methods = [",".join(reduce_dims) + ": crps"]
-    if isinstance(ds_crps, xr.DataArray):
-        update_cell_methods(ds_crps, new_cell_methods)
-    elif isinstance(ds_crps, xr.Dataset):
-        for _, da_var in ds_crps.items():
-            update_cell_methods(da_var, new_cell_methods)
+
+    if isinstance(ds_crps, (xr.DataArray, xr.Dataset)):
+        ds_crps.name = getattr(ds_prediction, "name", "crps")
+        reduce_dims = list(set(ds_reference.dims) - set(ds_crps.dims))
+        new_cell_methods = [",".join(reduce_dims) + ": crps"]
+        if isinstance(ds_crps, xr.DataArray):
+            update_cell_methods(ds_crps, new_cell_methods)
+        elif isinstance(ds_crps, xr.Dataset):
+            for _, da_var in ds_crps.items():
+                update_cell_methods(da_var, new_cell_methods)
     return ds_crps
 
 
@@ -309,8 +311,7 @@ def spread_skill_ratio(
         the RMSE of the Ensemble Mean?
         https://doi.org/10.1175/MWR-D-14-00037.1
     """
-    # groupby is accepted from callers but not used by this metric
-    stats_op_kwargs.pop("groupby", None)
+    groupby = stats_op_kwargs.pop("groupby", None)
     preserve_dims = stats_op_kwargs.pop("preserve_dims", None)
     reduce_dims = stats_op_kwargs.get("reduce_dims", None)
 
@@ -335,6 +336,9 @@ def spread_skill_ratio(
     ds_ssr = spread / skill
     ds_ssr.name = getattr(ds_prediction, "name", "spread_skill_ratio")
 
+    if groupby:
+        ds_ssr = ds_ssr.groupby(groupby)
+
     reduce_dims_list = reduce_dims if reduce_dims else []
     new_cell_methods = [",".join(reduce_dims_list) + ": spread_skill_ratio"]
     if isinstance(ds_ssr, xr.DataArray):
@@ -342,6 +346,7 @@ def spread_skill_ratio(
     elif isinstance(ds_ssr, xr.Dataset):
         for _, da_var in ds_ssr.items():
             update_cell_methods(da_var, new_cell_methods)
+
     return ds_ssr
 
 
