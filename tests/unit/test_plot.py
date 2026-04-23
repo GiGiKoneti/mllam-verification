@@ -47,9 +47,11 @@ def fixture_time_type_parameters(
     if time_axis == "elapsed":
         return (
             da_reference_2d_elapsed,
-            da_ensemble_prediction_2d_elapsed
-            if is_ensemble_metric
-            else da_prediction_2d_elapsed,
+            (
+                da_ensemble_prediction_2d_elapsed
+                if is_ensemble_metric
+                else da_prediction_2d_elapsed
+            ),
             stats_operation,
             include_persistence,
             time_axis,
