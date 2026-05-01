@@ -162,3 +162,307 @@ class TestSpreadSkillRatio:
         )
         # For a large well-calibrated ensemble SSR should be near 1.0
         assert 0.5 < float(result) < 2.0
+
+
+class TestBrierScore:
+    """Tests for the brier_score() function."""
+
+    def test_brier_score_returns_dataarray(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """brier_score() should return a DataArray."""
+        from mllam_verification.operations.statistics import brier_score
+
+        result = brier_score(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            thresholds=0.5,
+            reduce_dims=["x", "y"],
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_brier_score_ensemble_dim_collapsed(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Ensemble member dimension must not appear in output."""
+        from mllam_verification.operations.statistics import brier_score
+
+        result = brier_score(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            thresholds=0.5,
+            reduce_dims=["x", "y"],
+        )
+        assert "ensemble_member" not in result.dims
+
+    def test_brier_score_has_cell_methods(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Output must have cell_methods attribute."""
+        from mllam_verification.operations.statistics import brier_score
+
+        result = brier_score(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            thresholds=0.5,
+            reduce_dims=["x", "y"],
+        )
+        assert "cell_methods" in result.attrs
+
+    def test_brier_score_range(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Brier Score must be in range [0, 1]."""
+        from mllam_verification.operations.statistics import brier_score
+
+        result = brier_score(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            thresholds=0.5,
+            reduce_dims=["x", "y"],
+        )
+        assert float(result.min()) >= 0
+        assert float(result.max()) <= 1
+
+    def test_brier_score_multiple_thresholds(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Brier Score should work with multiple thresholds."""
+        from mllam_verification.operations.statistics import brier_score
+
+        result = brier_score(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            thresholds=[0.1, 0.5, 0.9],
+            reduce_dims=["x", "y"],
+        )
+        assert isinstance(result, xr.DataArray)
+        assert "threshold" in result.dims
+
+
+class TestEquitableThreatScore:
+    """Tests for the equitable_threat_score() function."""
+
+    def test_ets_returns_dataarray(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """equitable_threat_score() should return a DataArray."""
+        from mllam_verification.operations.statistics import equitable_threat_score
+
+        result = equitable_threat_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            reduce_dims="all",
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_ets_has_cell_methods(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Output must have cell_methods attribute."""
+        from mllam_verification.operations.statistics import equitable_threat_score
+
+        result = equitable_threat_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            reduce_dims="all",
+        )
+        assert "cell_methods" in result.attrs
+
+    def test_ets_range(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """ETS must be in range [-1/3, 1]."""
+        from mllam_verification.operations.statistics import equitable_threat_score
+
+        result = equitable_threat_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            reduce_dims="all",
+        )
+        assert float(result) >= -1 / 3
+        assert float(result) <= 1
+
+    def test_ets_perfect_forecast_is_one(self):
+        """A perfect forecast should have ETS = 1.0."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import equitable_threat_score
+
+        # Create identical observation and forecast
+        data = np.array([0.0, 0.0, 1.0, 1.0, 1.0])
+        obs = xr.DataArray(data, dims=["grid_index"])
+        fcst = xr.DataArray(data, dims=["grid_index"])
+
+        result = equitable_threat_score(
+            obs,
+            fcst,
+            threshold=0.5,
+            reduce_dims="all",
+        )
+        assert float(result) == 1.0
+
+    def test_ets_no_skill_near_zero(self):
+        """A random forecast should have ETS near 0."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import equitable_threat_score
+
+        rng = np.random.default_rng(seed=42)
+        obs = xr.DataArray(rng.choice([0.0, 1.0], size=1000), dims=["grid_index"])
+        fcst = xr.DataArray(rng.choice([0.0, 1.0], size=1000), dims=["grid_index"])
+
+        result = equitable_threat_score(
+            obs,
+            fcst,
+            threshold=0.5,
+            reduce_dims="all",
+        )
+        # Random forecast should have ETS near 0 (within ±0.15)
+        assert -0.15 < float(result) < 0.15
+
+
+class TestFractionsSkillScore:
+    """Tests for the fractions_skill_score() function."""
+
+    def test_fss_returns_dataarray(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """fractions_skill_score() should return a DataArray."""
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        result = fractions_skill_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            window_size=5,
+            spatial_dims=["x", "y"],
+        )
+        assert isinstance(result, xr.DataArray)
+
+    def test_fss_has_cell_methods(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """Output must have cell_methods attribute."""
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        result = fractions_skill_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            window_size=5,
+            spatial_dims=["x", "y"],
+        )
+        assert "cell_methods" in result.attrs
+
+    def test_fss_range(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """FSS must be in range [0, 1]."""
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        result = fractions_skill_score(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            window_size=5,
+            spatial_dims=["x", "y"],
+        )
+        assert float(result.min()) >= 0
+        assert float(result.max()) <= 1
+
+    def test_fss_perfect_forecast_is_one(self):
+        """A perfect forecast should have FSS = 1.0."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        data = np.random.rand(20, 20)
+        obs = xr.DataArray(data, dims=["x", "y"])
+        fcst = xr.DataArray(data, dims=["x", "y"])
+
+        result = fractions_skill_score(
+            obs, fcst, threshold=0.5, window_size=3, spatial_dims=["x", "y"]
+        )
+        assert float(result) == 1.0
+
+    def test_fss_increases_with_window_size(self):
+        """FSS should generally increase with larger window sizes."""
+        import numpy as np
+
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        rng = np.random.default_rng(seed=42)
+        obs = xr.DataArray(rng.random((50, 50)), dims=["x", "y"])
+        # Spatially shifted forecast
+        fcst = xr.DataArray(np.roll(obs.values, 3, axis=0), dims=["x", "y"])
+
+        fss_small = fractions_skill_score(
+            obs, fcst, threshold=0.5, window_size=3, spatial_dims=["x", "y"]
+        )
+        fss_large = fractions_skill_score(
+            obs, fcst, threshold=0.5, window_size=11, spatial_dims=["x", "y"]
+        )
+        assert float(fss_large) >= float(fss_small)
+
+    def test_fss_rejects_even_window(self):
+        """Even window_size should raise ValueError."""
+        import numpy as np
+        import pytest
+
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        data = np.random.rand(10, 10)
+        obs = xr.DataArray(data, dims=["x", "y"])
+        fcst = xr.DataArray(data, dims=["x", "y"])
+
+        with pytest.raises(ValueError, match="window_size must be odd"):
+            fractions_skill_score(
+                obs, fcst, threshold=0.5, window_size=4, spatial_dims=["x", "y"]
+            )
+
+    def test_fss_rejects_wrong_spatial_dims(self):
+        """spatial_dims with != 2 elements should raise ValueError."""
+        import numpy as np
+        import pytest
+
+        from mllam_verification.operations.statistics import fractions_skill_score
+
+        data = np.random.rand(10, 10)
+        obs = xr.DataArray(data, dims=["x", "y"])
+        fcst = xr.DataArray(data, dims=["x", "y"])
+
+        with pytest.raises(ValueError, match="spatial_dims must have exactly 2"):
+            fractions_skill_score(
+                obs, fcst, threshold=0.5, window_size=3, spatial_dims=["x"]
+            )
