@@ -606,3 +606,96 @@ def plot_single_metric_hovmoller(  # noqa: C901
         )
 
     return axes
+
+
+def plot_fss_scale(
+    da_reference: xr.DataArray,
+    da_prediction: xr.DataArray,
+    threshold: float,
+    window_sizes: list[int],
+    spatial_dims: Optional[list[str]] = None,
+    axes: Optional[plt.Axes] = None,
+    hue: Optional[str] = "datasource",
+    **stats_op_kwargs,
+) -> plt.Axes:
+    """Plot Fractions Skill Score (FSS) across multiple spatial scales.
+
+    Computes the FSS for a given threshold across a list of window
+    sizes and plots the resulting score vs. scale curve. A horizontal
+    line at FSS = 0.5 is added to indicate the standard threshold for
+    a "useful" forecast.
+
+    Args:
+        da_reference: Reference dataset/dataarray containing observations.
+        da_prediction: Forecast dataset/dataarray.
+        threshold: The threshold to define binary events.
+        window_sizes: List of odd integers defining the neighborhood sizes.
+        spatial_dims: Names of the spatial dimensions (e.g. ["x", "y"]).
+        axes: Pre-existing matplotlib axes. If None, creates a new figure.
+        hue: Dimension to use for coloring multiple lines (e.g. "datasource").
+        **stats_op_kwargs: Additional arguments passed to fractions_skill_score
+            (like `groupby`).
+
+    Returns:
+        The matplotlib axes containing the plot.
+    """
+    if spatial_dims is None:
+        spatial_dims = ["x", "y"]
+
+    if axes is None:
+        _, axes = plt.subplots(figsize=(8, 6))
+
+    # Calculate FSS for each window size
+    fss_values = []
+    for w in window_sizes:
+        if w % 2 == 0:
+            raise ValueError(f"window_sizes must be odd integers, got {w}")
+
+        ds_fss = mlverif_stats.fractions_skill_score(
+            da_reference,
+            da_prediction,
+            threshold=threshold,
+            window_size=w,
+            spatial_dims=spatial_dims,
+            **stats_op_kwargs,
+        )
+        # Assign window size coordinate for concatenation
+        ds_fss = ds_fss.assign_coords(window_size=w)
+        fss_values.append(ds_fss)
+
+    # Combine into a single DataArray
+    da_fss_scale = xr.concat(fss_values, dim="window_size")
+
+    # Plot
+    if hue in da_fss_scale.dims or hue in da_fss_scale.coords:
+        for hue_val in da_fss_scale[hue].values:
+            da_sub = da_fss_scale.sel({hue: hue_val})
+            axes.plot(
+                da_sub["window_size"],
+                da_sub.values,
+                marker="o",
+                label=str(hue_val),
+            )
+        axes.legend(title=hue)
+    else:
+        axes.plot(
+            da_fss_scale["window_size"],
+            da_fss_scale.values,
+            marker="o",
+            color="blue",
+        )
+
+    # Standard FSS plot formatting
+    axes.axhline(y=0.5, color="k", linestyle="--", alpha=0.7, label="Useful (0.5)")
+    axes.set_ylim(0, 1.05)
+    axes.set_xlabel("Neighborhood Size (grid points)")
+    axes.set_ylabel("Fractions Skill Score")
+    axes.set_title(f"FSS vs Scale (Threshold: {threshold})")
+    axes.grid(True, linestyle=":", alpha=0.6)
+
+    # Avoid duplicate labels in legend if axhline was drawn after hue loop
+    handles, labels = axes.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    axes.legend(by_label.values(), by_label.keys())
+
+    return axes
