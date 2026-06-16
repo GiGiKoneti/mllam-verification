@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Annotated, Callable, Literal, Optional
 
 import matplotlib.pyplot as plt
+import scores.plotdata as scc_plotdata
 import xarray as xr
 from pydantic import BeforeValidator, validate_call
 
@@ -230,6 +231,69 @@ def plot_single_metric_timeseries(  # noqa: C901
             ha="right",
         )
 
+    return axes
+
+
+@validate_call(config={"arbitrary_types_allowed": True})
+def plot_rank_histogram(
+    da_reference: xr.DataArray,
+    da_prediction: xr.DataArray,
+    ensemble_member_dim: str = "ensemble_member",
+    axes: Optional[plt.Axes] = None,
+    xarray_plot_kwargs: Optional[dict] = None,
+) -> plt.Axes:
+    """Plot a rank histogram (Talagrand diagram) for ensemble evaluation.
+
+    A rank histogram shows the distribution of the rank of each
+    observation within the sorted ensemble. A flat histogram indicates
+    a well-calibrated ensemble. A U-shaped histogram indicates
+    underdispersion. An arch-shaped histogram indicates overdispersion.
+
+    Args:
+        da_reference: Reference (observation) data array.
+        da_prediction: Ensemble forecast data array. Must contain
+            `ensemble_member_dim` as a dimension.
+        ensemble_member_dim: Name of the ensemble member dimension
+            in `da_prediction`. Defaults to ``"ensemble_member"``.
+        axes: Matplotlib axes to plot on. If None, a new figure
+            and axes are created.
+        xarray_plot_kwargs: Additional keyword arguments forwarded
+            to the xarray `.plot.bar()` call.
+
+    Returns:
+        Matplotlib axes with the rank histogram plotted.
+
+    Example:
+        >>> fig, ax = plt.subplots()
+        >>> plot_rank_histogram(
+        ...     da_reference,
+        ...     da_ensemble_prediction,
+        ...     ensemble_member_dim="ensemble_member",
+        ...     axes=ax,
+        ... )
+    """
+    if axes is None:
+        _, axes = plt.subplots()
+
+    if xarray_plot_kwargs is None:
+        xarray_plot_kwargs = {}
+
+    da_ranks = scc_plotdata.rank_histogram(
+        fcst=da_prediction,
+        obs=da_reference,
+        ens_member_dim=ensemble_member_dim,
+    )
+
+    da_ranks.to_series().plot.bar(ax=axes, **xarray_plot_kwargs)
+    axes.set_xlabel("Rank")
+    axes.set_ylabel("Relative frequency")
+    axes.axhline(
+        y=1.0 / (da_prediction.sizes[ensemble_member_dim] + 1),
+        color="red",
+        linestyle="--",
+        label="Perfect calibration",
+    )
+    axes.legend()
     return axes
 
 

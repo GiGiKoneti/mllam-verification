@@ -3,6 +3,7 @@ from typing import List, Mapping, Optional, Tuple
 
 import numpy as np
 import scores.continuous as scc_cont
+import scores.probability as scc_prob
 import xarray as xr
 
 xr.set_options(keep_attrs=True)
@@ -205,6 +206,148 @@ def mae(
     #     raise ValueError("ds_mae must be an xr.Dataset or xr.DataArray")
 
     return ds_mae
+
+
+def crps(
+    ds_reference: xr.Dataset | xr.DataArray,
+    ds_prediction: xr.Dataset | xr.DataArray,
+    ensemble_member_dim: str = "ensemble_member",
+    **stats_op_kwargs,
+) -> xr.Dataset | xr.DataArray:
+    """Compute the Continuous Ranked Probability Score (CRPS).
+
+    Wraps `scores.probability.crps_for_ensemble` via
+    `compute_pipeline_statistic`. Uses the fair (unbiased) estimator
+    which correctly accounts for finite ensemble size.
+
+    A perfectly calibrated ensemble achieves minimum CRPS. Lower is better.
+    Unlike `crps_gauss`, this function makes no distributional assumptions
+    and accepts raw ensemble member trajectories.
+
+    Args:
+        ds_reference: Reference (observation) dataset or data array.
+            Must NOT contain `ensemble_member_dim`.
+        ds_prediction: Ensemble forecast dataset or data array.
+            Must contain `ensemble_member_dim` as a dimension.
+        ensemble_member_dim: Name of the ensemble member dimension
+            in `ds_prediction`. Defaults to ``"ensemble_member"``.
+        **stats_op_kwargs: Additional keyword arguments forwarded to
+            `scores.probability.crps_for_ensemble`, such as
+            ``reduce_dims`` or ``preserve_dims``.
+
+    Returns:
+        Dataset or DataArray with CRPS values. The ensemble member
+        dimension is collapsed. The ``cell_methods`` attribute records
+        which dimensions were reduced.
+
+    References:
+        Zamo, M. & Naveau, P. (2018). Estimation of the Continuous
+        Ranked Probability Score with Limited Information and
+        Applications to Ensemble Weather Forecasts.
+        https://doi.org/10.1007/s11004-017-9709-7
+
+    Example:
+        >>> da_crps = crps(
+        ...     da_reference,
+        ...     da_ensemble_prediction,
+        ...     ensemble_member_dim="ensemble_member",
+        ...     reduce_dims=["x", "y"],
+        ... )
+    """
+    groupby = stats_op_kwargs.pop("groupby", None)
+    stats_op_kwargs["ensemble_member_dim"] = ensemble_member_dim
+    ds_crps = compute_pipeline_statistic(
+        datasets=[ds_prediction, ds_reference],
+        stats_op=scc_prob.crps_for_ensemble,
+        stats_op_kwargs=stats_op_kwargs,
+        groupby=groupby,
+    )
+
+    if isinstance(ds_crps, (xr.DataArray, xr.Dataset)):
+        ds_crps.name = getattr(ds_prediction, "name", "crps")
+        reduce_dims = list(set(ds_reference.dims) - set(ds_crps.dims))
+        new_cell_methods = [",".join(reduce_dims) + ": crps"]
+        if isinstance(ds_crps, xr.DataArray):
+            update_cell_methods(ds_crps, new_cell_methods)
+        elif isinstance(ds_crps, xr.Dataset):
+            for _, da_var in ds_crps.items():
+                update_cell_methods(da_var, new_cell_methods)
+    return ds_crps
+
+
+def spread_skill_ratio(
+    ds_reference: xr.Dataset | xr.DataArray,
+    ds_prediction: xr.Dataset | xr.DataArray,
+    ensemble_member_dim: str = "ensemble_member",
+    **stats_op_kwargs,
+) -> xr.Dataset | xr.DataArray:
+    """Compute the Spread-Skill Ratio (SSR) for ensemble calibration.
+
+    SSR = ensemble_spread / RMSE_of_ensemble_mean
+
+    A perfectly calibrated ensemble has SSR = 1.0. Values below 1.0
+    indicate underdispersion (ensemble too confident). Values above 1.0
+    indicate overdispersion (ensemble too uncertain).
+
+    Ensemble spread is the mean standard deviation across members.
+    Skill is the RMSE of the ensemble mean against the reference.
+
+    Args:
+        ds_reference: Reference (observation) dataset or data array.
+        ds_prediction: Ensemble forecast dataset or data array.
+            Must contain `ensemble_member_dim` as a dimension.
+        ensemble_member_dim: Name of the ensemble member dimension
+            in `ds_prediction`. Defaults to ``"ensemble_member"``.
+        **stats_op_kwargs: Additional keyword arguments forwarded
+            to xarray reduction operations, such as ``reduce_dims``.
+
+    Returns:
+        Dataset or DataArray with SSR values. Values near 1.0 indicate
+        good ensemble calibration. The ``cell_methods`` attribute
+        records which dimensions were reduced.
+
+    References:
+        Fortin, V. et al. (2014). Why Should Ensemble Spread Match
+        the RMSE of the Ensemble Mean?
+        https://doi.org/10.1175/MWR-D-14-00037.1
+    """
+    groupby = stats_op_kwargs.pop("groupby", None)
+    preserve_dims = stats_op_kwargs.pop("preserve_dims", None)
+    reduce_dims = stats_op_kwargs.get("reduce_dims", None)
+
+    # Derive reduce_dims from preserve_dims if not explicitly provided
+    if reduce_dims is None and preserve_dims is not None:
+        all_dims = [d for d in ds_prediction.dims if d != ensemble_member_dim]
+        reduce_dims = [d for d in all_dims if d not in preserve_dims]
+
+    # Ensemble spread: mean standard deviation across members
+    spread = ds_prediction.std(dim=ensemble_member_dim)
+    if reduce_dims:
+        spread = spread.mean(dim=reduce_dims)
+
+    # Skill: RMSE of ensemble mean
+    ensemble_mean = ds_prediction.mean(dim=ensemble_member_dim)
+    squared_error = (ensemble_mean - ds_reference) ** 2
+    if reduce_dims:
+        skill = squared_error.mean(dim=reduce_dims) ** 0.5
+    else:
+        skill = squared_error.mean() ** 0.5
+
+    ds_ssr = spread / skill
+    ds_ssr.name = getattr(ds_prediction, "name", "spread_skill_ratio")
+
+    if groupby:
+        ds_ssr = ds_ssr.groupby(groupby)
+
+    reduce_dims_list = reduce_dims if reduce_dims else []
+    new_cell_methods = [",".join(reduce_dims_list) + ": spread_skill_ratio"]
+    if isinstance(ds_ssr, xr.DataArray):
+        update_cell_methods(ds_ssr, new_cell_methods)
+    elif isinstance(ds_ssr, xr.Dataset):
+        for _, da_var in ds_ssr.items():
+            update_cell_methods(da_var, new_cell_methods)
+
+    return ds_ssr
 
 
 def mean(ds: xr.Dataset | xr.DataArray, **stats_op_kwargs) -> xr.Dataset | xr.DataArray:

@@ -3,16 +3,20 @@
 from datetime import datetime
 from typing import Callable, Literal, Optional, Tuple
 
+import matplotlib
 import matplotlib.pyplot as plt
 import pytest
 import xarray as xr
 
 import mllam_verification.operations.statistics as mlverif_stats
 from mllam_verification.plot import (
+    plot_rank_histogram,
     plot_single_metric_gridded_map,
     plot_single_metric_hovmoller,
     plot_single_metric_timeseries,
 )
+
+matplotlib.use("Agg")
 
 
 @pytest.fixture(name="time_axis_parameters")
@@ -20,8 +24,10 @@ def fixture_time_type_parameters(
     request,
     da_reference_2d_utc,
     da_prediction_2d_utc,
+    da_ensemble_prediction_2d_utc,
     da_reference_2d_elapsed,
     da_prediction_2d_elapsed,
+    da_ensemble_prediction_2d_elapsed,
 ) -> Tuple[xr.DataArray, xr.DataArray, Callable, bool, str, Callable, dict, int]:
     """Return a tuple of parameters for the test plot functions."""
     (
@@ -32,10 +38,20 @@ def fixture_time_type_parameters(
         time_op_kwargs,
         expected_num_lines,
     ) = request.param
+
+    is_ensemble_metric = stats_operation in [
+        mlverif_stats.crps,
+        mlverif_stats.spread_skill_ratio,
+    ]
+
     if time_axis == "elapsed":
         return (
             da_reference_2d_elapsed,
-            da_prediction_2d_elapsed,
+            (
+                da_ensemble_prediction_2d_elapsed
+                if is_ensemble_metric
+                else da_prediction_2d_elapsed
+            ),
             stats_operation,
             include_persistence,
             time_axis,
@@ -45,7 +61,7 @@ def fixture_time_type_parameters(
         )
     return (
         da_reference_2d_utc,
-        da_prediction_2d_utc,
+        da_ensemble_prediction_2d_utc if is_ensemble_metric else da_prediction_2d_utc,
         stats_operation,
         include_persistence,
         time_axis,
@@ -79,6 +95,8 @@ class TestPlotSingleMetricTimeseries:
             ),
             (mlverif_stats.mae, False, "groupedby.hour.0", None, {}, 1),
             (mlverif_stats.rmse, False, "groupedby.hour", mlverif_stats.mean, {}, 1),
+            (mlverif_stats.crps, False, "UTC", None, {}, 1),
+            (mlverif_stats.spread_skill_ratio, False, "UTC", None, {}, 1),
         ],
         indirect=True,
     )
@@ -128,8 +146,26 @@ class TestPlotSingleMetricTimeseries:
                 {"dim": "start_time"},
                 1,
             ),
+            (
+                mlverif_stats.crps,
+                True,
+                "elapsed",
+                mlverif_stats.mean,
+                {"dim": "start_time"},
+                1,
+            ),
+            (
+                mlverif_stats.spread_skill_ratio,
+                True,
+                "elapsed",
+                mlverif_stats.mean,
+                {"dim": "start_time"},
+                1,
+            ),
             (mlverif_stats.mae, False, "grouped.hour.0", None, {}, 1),
+            (mlverif_stats.crps, False, "grouped.hour.0", None, {}, 1),
             (mlverif_stats.rmse, False, "groupedby.hour", None, {}, 1),
+            (mlverif_stats.spread_skill_ratio, False, "groupedby.hour", None, {}, 1),
             (mlverif_stats.rmse, False, "groupedby.time.hour.0", None, {}, 1),
         ],
         indirect=True,
@@ -248,6 +284,8 @@ class TestPlotSingleMetricHovmoller:
             (mlverif_stats.mae, None, "UTC", None, {}, None),
             (mlverif_stats.mae, None, "groupedby.hour", mlverif_stats.mean, {}, None),
             (mlverif_stats.rmse, None, "groupedby.hour.0", None, {}, None),
+            (mlverif_stats.crps, None, "UTC", None, {}, None),
+            (mlverif_stats.spread_skill_ratio, None, "UTC", None, {}, None),
         ],
         indirect=True,
     )
@@ -289,9 +327,33 @@ class TestPlotSingleMetricHovmoller:
                 {},
                 None,
             ),
+            (
+                mlverif_stats.crps,
+                None,
+                "elapsed",
+                None,
+                {},
+                None,
+            ),
             (mlverif_stats.mae, None, "groupedby.hour", None, {}, None),
             (
+                mlverif_stats.spread_skill_ratio,
+                None,
+                "groupedby.hour",
+                None,
+                {},
+                None,
+            ),
+            (
                 mlverif_stats.rmse,
+                None,
+                "groupedby.hour.0",
+                mlverif_stats.mean,
+                {},
+                None,
+            ),
+            (
+                mlverif_stats.crps,
                 None,
                 "groupedby.hour.0",
                 mlverif_stats.mean,
@@ -327,3 +389,38 @@ class TestPlotSingleMetricHovmoller:
                 time_operation=time_operation,
                 time_op_kwargs=time_op_kwargs,
             )
+
+
+class TestPlotRankHistogram:
+    """Tests for plot_rank_histogram()."""
+
+    def test_returns_axes(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_rank_histogram() should return matplotlib Axes."""
+        axes = plot_rank_histogram(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+        )
+
+        assert isinstance(axes, plt.Axes)
+        plt.close("all")
+
+    def test_accepts_existing_axes(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_rank_histogram() should use provided axes."""
+        fig, ax = plt.subplots()
+        returned_ax = plot_rank_histogram(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            axes=ax,
+        )
+        assert returned_ax is ax
+        plt.close("all")
