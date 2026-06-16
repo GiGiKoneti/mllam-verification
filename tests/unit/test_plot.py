@@ -424,3 +424,63 @@ class TestPlotRankHistogram:
         )
         assert returned_ax is ax
         plt.close("all")
+
+
+class TestPlotFssScale:
+    """Unit tests for the plot_fss_scale function."""
+
+    def test_returns_axes(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_fss_scale() should return a matplotlib Axes object."""
+        from mllam_verification.plot import plot_fss_scale
+
+        axes = plot_fss_scale(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            window_sizes=[3, 5, 7],
+            spatial_dims=["x", "y"],
+        )
+
+        assert isinstance(axes, plt.Axes)
+        plt.close("all")
+
+    def test_accepts_existing_axes(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_fss_scale() should use provided axes."""
+        from mllam_verification.plot import plot_fss_scale
+
+        fig, ax = plt.subplots()
+        returned_ax = plot_fss_scale(
+            da_reference_2d_utc,
+            da_prediction_2d_utc,
+            threshold=0.5,
+            window_sizes=[3, 5],
+            spatial_dims=["x", "y"],
+            axes=ax,
+        )
+        assert returned_ax is ax
+        plt.close("all")
+
+    def test_rejects_even_window_sizes(
+        self,
+        da_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """plot_fss_scale() should raise ValueError for even window sizes."""
+        from mllam_verification.plot import plot_fss_scale
+
+        with pytest.raises(ValueError, match="window_sizes must be odd integers"):
+            plot_fss_scale(
+                da_reference_2d_utc,
+                da_prediction_2d_utc,
+                threshold=0.5,
+                window_sizes=[2, 4],
+                spatial_dims=["x", "y"],
+            )
