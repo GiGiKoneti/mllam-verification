@@ -6,6 +6,7 @@ from typing import Annotated, Callable, Literal, Optional
 import matplotlib.pyplot as plt
 import scores.plotdata as scc_plotdata
 import xarray as xr
+from loguru import logger
 from pydantic import BeforeValidator, validate_call
 
 import mllam_verification.operations.statistics as mlverif_stats
@@ -613,9 +614,9 @@ def plot_fss_scale(
     da_prediction: xr.DataArray,
     threshold: float,
     window_sizes: list[int],
-    spatial_dims: Optional[list[str]] = None,
+    spatial_dims: list[str] = ["x", "y"],
     axes: Optional[plt.Axes] = None,
-    hue: Optional[str] = "datasource",
+    hue: str = "datasource",
     **stats_op_kwargs,
 ) -> plt.Axes:
     """Plot Fractions Skill Score (FSS) across multiple spatial scales.
@@ -639,9 +640,6 @@ def plot_fss_scale(
     Returns:
         The matplotlib axes containing the plot.
     """
-    if spatial_dims is None:
-        spatial_dims = ["x", "y"]
-
     if axes is None:
         _, axes = plt.subplots(figsize=(8, 6))
 
@@ -680,6 +678,10 @@ def plot_fss_scale(
             )
         axes.legend(title=hue)
     else:
+        logger.info(
+            f"hue value '{hue}' not found in DataArray dimensions or coordinates. "
+            "Plotting a single line."
+        )
         axes.plot(
             da_fss_scale["window_size"],
             da_fss_scale.values,

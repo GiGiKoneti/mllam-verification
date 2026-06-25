@@ -213,13 +213,14 @@ def crps(
     ds_reference: xr.Dataset | xr.DataArray,
     ds_prediction: xr.Dataset | xr.DataArray,
     ensemble_member_dim: str = "ensemble_member",
+    method: str = "fair",
     **stats_op_kwargs,
 ) -> xr.Dataset | xr.DataArray:
     """Compute the Continuous Ranked Probability Score (CRPS).
 
     Wraps `scores.probability.crps_for_ensemble` via
     `compute_pipeline_statistic`. Uses the fair (unbiased) estimator
-    which correctly accounts for finite ensemble size.
+    which correctly accounts for finite ensemble size by default.
 
     A perfectly calibrated ensemble achieves minimum CRPS. Lower is better.
     Unlike `crps_gauss`, this function makes no distributional assumptions
@@ -232,6 +233,9 @@ def crps(
             Must contain `ensemble_member_dim` as a dimension.
         ensemble_member_dim: Name of the ensemble member dimension
             in `ds_prediction`. Defaults to ``"ensemble_member"``.
+        method: The method to compute CRPS. Set to ``"fair"`` to use the
+            unbiased estimator, or ``"ecdf"`` to use the empirical cumulative
+            distribution function. Defaults to ``"fair"``.
         **stats_op_kwargs: Additional keyword arguments forwarded to
             `scores.probability.crps_for_ensemble`, such as
             ``reduce_dims`` or ``preserve_dims``.
@@ -257,6 +261,7 @@ def crps(
     """
     groupby = stats_op_kwargs.pop("groupby", None)
     stats_op_kwargs["ensemble_member_dim"] = ensemble_member_dim
+    stats_op_kwargs["method"] = method
     ds_crps = compute_pipeline_statistic(
         datasets=[ds_prediction, ds_reference],
         stats_op=scc_prob.crps_for_ensemble,
@@ -267,7 +272,7 @@ def crps(
     if isinstance(ds_crps, (xr.DataArray, xr.Dataset)):
         ds_crps.name = getattr(ds_prediction, "name", "crps")
         reduce_dims = list(set(ds_reference.dims) - set(ds_crps.dims))
-        new_cell_methods = [",".join(reduce_dims) + ": crps"]
+        new_cell_methods = [",".join(reduce_dims) + f": crps(method={method})"]
         if isinstance(ds_crps, xr.DataArray):
             update_cell_methods(ds_crps, new_cell_methods)
         elif isinstance(ds_crps, xr.Dataset):
@@ -310,7 +315,7 @@ def spread_skill_ratio(
     References:
         Fortin, V. et al. (2014). Why Should Ensemble Spread Match
         the RMSE of the Ensemble Mean?
-        https://doi.org/10.1175/MWR-D-14-00037.1
+        https://doi.org/10.1175/JHM-D-14-0008.1
     """
     groupby = stats_op_kwargs.pop("groupby", None)
     preserve_dims = stats_op_kwargs.pop("preserve_dims", None)
@@ -430,8 +435,9 @@ def equitable_threat_score(
     """Compute the Equitable Threat Score (ETS) for categorical forecasts.
 
     Also known as Gilbert Skill Score. Evaluates how well the forecast
-    "yes" events correspond to the observed "yes" events, accounting
-    for hits due to chance.
+    "yes" events (e.g., whether or not a tornado will occur, or whether a
+    rain rate will exceed a certain threshold) correspond to the observed
+    "yes" events, accounting for hits due to chance.
 
     Binary events are defined by exceedance of ``threshold``:
     a grid point is considered a "hit" if both forecast and observation
@@ -505,7 +511,7 @@ def fractions_skill_score(
     ds_prediction: xr.Dataset | xr.DataArray,
     threshold: float,
     window_size: int,
-    spatial_dims: Optional[List[str]] = None,
+    spatial_dims: list[str] = ["x", "y"],
     **stats_op_kwargs,
 ) -> xr.Dataset | xr.DataArray:
     """Compute the Fractions Skill Score (FSS) for spatial forecasts.
@@ -559,9 +565,6 @@ def fractions_skill_score(
         ...     spatial_dims=["x", "y"],
         ... )
     """
-    if spatial_dims is None:
-        spatial_dims = ["x", "y"]
-
     if len(spatial_dims) != 2:
         raise ValueError(
             f"spatial_dims must have exactly 2 elements, got {len(spatial_dims)}"
@@ -598,8 +601,8 @@ def fractions_skill_score(
     mse_ref = (obs_frac**2 + fcst_frac**2).mean(dim=spatial_dims)
 
     # FSS = 1 - MSE / MSE_ref
-    # When mse_ref == 0, both fields have zero fractional coverage
-    # (or are identical), so the forecast is trivially perfect → FSS = 1.0
+    # When mse_ref == 0 (both fields have zero fractional coverage), or when
+    # mse == 0 (fields are identical), the forecast is perfect → FSS = 1.0
     ds_fss = xr.where(mse_ref > 0, 1.0 - mse / mse_ref, 1.0)
     ds_fss.name = getattr(ds_prediction, "name", "fractions_skill_score")
 

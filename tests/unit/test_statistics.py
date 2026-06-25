@@ -97,6 +97,32 @@ class TestCrps:
         )
         assert float(result.min()) >= 0
 
+    def test_crps_method(
+        self,
+        da_ensemble_prediction_2d_utc: xr.DataArray,
+        da_reference_2d_utc: xr.DataArray,
+    ):
+        """crps() should support method='fair' and method='ecdf'."""
+        from mllam_verification.operations.statistics import crps
+
+        result_fair = crps(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            method="fair",
+            reduce_dims=["x", "y"],
+        )
+        result_ecdf = crps(
+            da_reference_2d_utc,
+            da_ensemble_prediction_2d_utc,
+            ensemble_member_dim="ensemble_member",
+            method="ecdf",
+            reduce_dims=["x", "y"],
+        )
+        assert result_fair.attrs["cell_methods"].endswith("crps(method=fair)")
+        assert result_ecdf.attrs["cell_methods"].endswith("crps(method=ecdf)")
+        assert not result_fair.equals(result_ecdf)
+
 
 class TestSpreadSkillRatio:
     """Tests for the spread_skill_ratio() function."""

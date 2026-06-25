@@ -28,6 +28,8 @@ The following table outlines the different types of plots one can produce with t
 | Single metric hovmöller     | `plot_single_metric_hovmoller`     | ![single_metric_hovmoller_example](./docs/_images/single_metric_hovmoller_example.png) | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ |
 | Single metric gridded map   | `plot_single_metric_gridded_map`   | ![single_metric_gridded_map](./docs/_images/single_metric_gridded_map_example.png) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 ~~single metric point map~~²     | ~~`plot_single_metric_point_map`~~ ²     | ![single_metric_point_map](./docs/_images/single_metric_point_map_example.png) | ✅ | ❌ | ❌ | ✅² | ✅² | ❌ | ✅ | ✅ |
+| Rank histogram              | `plot_rank_histogram`               | ![rank_histogram_example](./docs/_images/rank_histogram_example.png) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| FSS vs scale                | `plot_fss_scale`                    | ![fss_scale_example](./docs/_images/fss_scale_example.png) | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ✅ |
 
 ¹ without persistence\
 ² not supported yet, but soon to come\
